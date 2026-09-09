@@ -65,3 +65,23 @@ test('sapphire punishes an exposed king with the legal mating move', () => {
   assert.equal(move.san, 'Qh4#');
   assert.equal(statusText(game), 'Sapphire wins · Checkmate');
 });
+
+test('variety selects different legal near-best openings without dropping forced mate', () => {
+  const fen = new Chess().fen();
+  const choices = [0, 0.3, 0.6, 0.99].map((random) =>
+    chooseMove(fen, 2, { variety: 18, random: () => random }),
+  );
+  assert.ok(new Set(choices.map((m) => m.from + m.to)).size > 1);
+  for (const move of choices) assert.ok(new Chess(fen).move(move));
+  for (const random of [0, 0.99]) {
+    const game = new Chess('7k/5Q2/6K1/8/8/8/8/8 w - - 0 1');
+    game.move(chooseMove(game.fen(), 2, { variety: 18, random: () => random }));
+    assert.equal(game.isCheckmate(), true);
+  }
+});
+test('search preserves actual repetition history instead of reconstructing only FEN', () => {
+  const game = new Chess();
+  for (const move of ['Nf3', 'Nf6', 'Ng1', 'Ng8', 'Nf3', 'Nf6', 'Ng1', 'Ng8']) game.move(move);
+  assert.equal(game.isThreefoldRepetition(), true);
+  assert.equal(chooseMove(game.fen(), 2, { pgn: game.pgn(), variety: 18 }), null);
+});

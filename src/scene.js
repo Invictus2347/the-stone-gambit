@@ -13,6 +13,8 @@ import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { makeMaterials } from './materials.js';
 import { captureSquare } from './chess-engine.js';
 import { prepareCombat, poseCombat, contactDistance } from './combat.js';
+import { FrameBudget, renderPixelRatio } from './render-budget.js';
+import { batchRigidMeshes, setPieceAnimated } from './static-batches.js';
 
 const clamp = THREE.MathUtils.clamp,
   lerp = THREE.MathUtils.lerp;
@@ -49,12 +51,15 @@ export class ChessScene {
     this.scene.fog = new THREE.FogExp2('#091322', 0.021);
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
-      preserveDrawingBuffer: true,
+      preserveDrawingBuffer: false,
       powerPreference: 'high-performance',
     });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    this.renderer.info.autoReset = false;
     this.renderer.setSize(innerWidth, innerHeight);
     this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.02;
@@ -100,6 +105,14 @@ export class ChessScene {
     pmrem.dispose();
     this.buildBoard();
     this.buildChamber();
+    // Static chamber geometry can share draws without changing individual tiles
+    // used by picking. The tile proxies remain available to the raycaster.
+    const fixed = this.scene.children.filter(
+      (o) => o.isMesh && o !== this.reflector && !o.material.transparent,
+    );
+    for (const mesh of batchRigidMeshes(this.scene, fixed)) this.scene.add(mesh);
+    for (const mesh of fixed) this.scene.remove(mesh);
+    this.restBatches = new Map();
     this.lights();
     this.buildAtmosphere();
     this.composer = new EffectComposer(this.renderer);
@@ -127,6 +140,9 @@ export class ChessScene {
       this.composer.setSize(innerWidth, innerHeight);
     };
     window.addEventListener('resize', this.resize);
+    this.frameBudget = new FrameBudget();
+    this.resolutionScale = 1;
+    this.setQuality(true);
   }
   mesh(geometry, material, pos, parent = this.scene) {
     const m = new THREE.Mesh(geometry, material);
@@ -410,13 +426,25 @@ export class ChessScene {
           }
         }
         this.assets[type] = optimized;
-        const broken = await loader.loadAsync(`/models/hero/${type}-fracture.glb?v=1`);
-        this.fractures[type] = broken.scene;
         onProgress(++n / 6);
       }),
     );
+    // Destruction assets are not a prerequisite for making the first move.
+    // Fetch sequentially so they do not compete with all six playable models.
+    this.fracturesReady = (async () => {
+      for (const type of ['p', 'n', 'b', 'r', 'q', 'k']) {
+        try {
+          this.fractures[type] = (
+            await loader.loadAsync(`/models/hero/${type}-fracture.glb?v=1`)
+          ).scene;
+        } catch {
+          /* The existing armor-fragment fallback remains playable. */
+        }
+      }
+    })();
   }
   createPiece(p, square) {
+    this.restBatches ??= new Map();
     const group = new THREE.Group();
     const model = cloneSkeleton(this.assets[p.type]);
     group.add(model);
@@ -483,15 +511,39 @@ export class ChessScene {
         };
     });
     prepareCombat(group, this.materials[p.color === 'w' ? 'ivory' : 'sapphire']);
+    const originals = [];
+    group.traverseVisible((o) => {
+      if (o.isMesh && !o.isSkinnedMesh && !Array.isArray(o.material) && !o.material.transparent)
+        originals.push(o);
+    });
+    const key = `${p.color}:${p.type}`;
+    if (!this.restBatches.has(key)) this.restBatches.set(key, batchRigidMeshes(group, originals));
+    const rest = new THREE.Group();
+    for (const template of this.restBatches.get(key)) {
+      const mesh = new THREE.Mesh(template.geometry, template.material);
+      mesh.castShadow = template.castShadow;
+      mesh.receiveShadow = template.receiveShadow;
+      rest.add(mesh);
+    }
+    group.add(rest);
+    group.userData.restBatch = { group: rest, originals };
+    setPieceAnimated(group, false);
     this.scene.add(group);
     this.pieces.set(square, group);
     return group;
   }
   sync(chess) {
+    if (this.renderer) this.renderer.shadowMap.needsUpdate = true;
     // A capture removes its victim from the square map before the animation
     // ends. Interrupted films/resets must remove that orphaned statue too.
-    if (this.capture?.victim) this.scene.remove(this.capture.victim);
-    for (const p of this.pieces.values()) this.scene.remove(p);
+    if (this.capture?.victim) {
+      this.capture.victim.userData.surfaceSkin?.dispose();
+      this.scene.remove(this.capture.victim);
+    }
+    for (const p of this.pieces.values()) {
+      p.userData.surfaceSkin?.dispose();
+      this.scene.remove(p);
+    }
     this.pieces.clear();
     this.clearDebris();
     this.capture = null;
@@ -803,6 +855,12 @@ export class ChessScene {
     }
   }
   update(dt) {
+    if (this.capture) {
+      setPieceAnimated(this.capture.attacker, true);
+      setPieceAnimated(this.capture.victim, true);
+    }
+    if (this.renderer && (this.capture || this.fragments.length))
+      this.renderer.shadowMap.needsUpdate = true;
     this.clock += dt;
     this.motes.rotation.y = this.clock * 0.003;
     for (const f of this.flames) {
@@ -896,6 +954,7 @@ export class ChessScene {
         }
         a.attacker.position.copy(a.to);
         this.pose(a.attacker);
+        setPieceAnimated(a.attacker, false);
         if (a.rook) a.rook.piece.position.copy(a.rook.to);
         if (a.move.promotion) {
           this.scene.remove(a.attacker);
@@ -949,6 +1008,7 @@ export class ChessScene {
     return finished;
   }
   render() {
+    this.renderer.info.reset();
     const offset = vec();
     if (this.shake > 0 && !this.reduced) {
       offset.set(
@@ -960,7 +1020,8 @@ export class ChessScene {
     }
     this.camera.position.add(offset);
     this.camera.lookAt(this.controls.target);
-    this.composer.render();
+    if (this.lowQuality) this.renderer.render(this.scene, this.camera);
+    else this.composer.render();
     this.camera.position.sub(offset);
   }
   resetCamera() {
@@ -970,11 +1031,26 @@ export class ChessScene {
     this.controls.update();
   }
   setQuality(low) {
-    this.renderer.setPixelRatio(low ? 1 : Math.min(devicePixelRatio, 1.5));
+    this.lowQuality = low;
+    this.resolutionScale = 1;
+    this.frameBudget?.reset();
+    this.renderer.setPixelRatio(renderPixelRatio(innerWidth, innerHeight, devicePixelRatio));
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.reflector.visible = !low;
     this.bloom.enabled = !low;
     this.ao.enabled = !low;
-    this.renderer.shadowMap.enabled = !low;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.needsUpdate = true;
     this.resize();
+  }
+  adaptQuality(ms) {
+    if (!this.lowQuality || this.resolutionScale <= 0.6 || !this.frameBudget.sample(ms)) return;
+    this.resolutionScale = Math.max(0.6, this.resolutionScale - 0.15);
+    this.renderer.setPixelRatio(
+      renderPixelRatio(innerWidth, innerHeight, devicePixelRatio, this.resolutionScale),
+    );
+    this.composer.setPixelRatio(this.renderer.getPixelRatio());
+    this.renderer.setSize(innerWidth, innerHeight);
+    this.composer.setSize(innerWidth, innerHeight);
   }
 }

@@ -35,8 +35,13 @@ function ordered(chess) {
     );
 }
 
-export function chooseMove(fen, depth = 2) {
+export function chooseMove(fen, depth = 2, { variety = 0, random = Math.random, pgn } = {}) {
   const chess = new Chess(fen);
+  if (pgn) {
+    chess.loadPgn(pgn);
+    if (chess.fen() !== fen) throw new Error('Search history does not match the position');
+  }
+  if (chess.isGameOver()) return null;
   function search(d, alpha, beta) {
     if (d === 0 || chess.isGameOver()) return evaluate(chess);
     let best = -Infinity;
@@ -52,14 +57,24 @@ export function chooseMove(fen, depth = 2) {
   }
   let best = -Infinity,
     selected = null;
+  const candidates = [];
   for (const m of ordered(chess)) {
     chess.move(m);
     const score = -search(depth - 1, -Infinity, Infinity);
     chess.undo();
+    candidates.push({ move: { from: m.from, to: m.to, promotion: m.promotion }, score });
     if (score > best) {
       best = score;
       selected = { from: m.from, to: m.to, promotion: m.promotion };
     }
+  }
+  if (variety > 0 && selected) {
+    // Never trade a forced mate for variety. Noise is limited to root choices,
+    // not injected into the search, so tactical evaluations remain consistent.
+    const tolerance = Math.abs(best) > 90000 ? 0 : Math.min(24, variety);
+    const choices = candidates.filter((candidate) => candidate.score >= best - tolerance);
+    return choices[Math.min(choices.length - 1, Math.max(0, Math.floor(random() * choices.length)))]
+      .move;
   }
   return selected;
 }

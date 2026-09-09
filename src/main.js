@@ -178,7 +178,7 @@ function queueAI() {
   if (mode === 'human' && chess.turn() === 'w') return;
   thinking = true;
   refresh();
-  engine.postMessage({ id: ++requestId, fen: chess.fen(), depth: 2 });
+  engine.postMessage({ id: ++requestId, fen: chess.fen(), pgn: chess.pgn(), depth: 2 });
 }
 engine.onmessage = ({ data }) => {
   if (data.id !== requestId) return;
@@ -297,6 +297,8 @@ $('#film').onclick = async () => {
     await audio.init();
     $('#sound').textContent = 'Sound on';
     $('#sound').setAttribute('aria-pressed', 'true');
+    await scene.fracturesReady;
+    if (mode !== 'film') return;
     film.start();
   } catch (error) {
     mode = resumeMode;
@@ -342,6 +344,7 @@ $('#cinematic').onchange = (e) => (scene.cinematic = e.target.checked);
 $('#motion').onchange = (e) => {
   scene.reduced = e.target.checked;
 };
+$('#quality').checked = true;
 $('#quality').onchange = (e) => scene.setQuality(e.target.checked);
 $('#camera').onclick = () => scene.resetCamera();
 $('#promotion').addEventListener('cancel', () => {
@@ -366,9 +369,11 @@ document.addEventListener('visibilitychange', () => {
 
 function loop(time) {
   requestAnimationFrame(loop);
+  const frameMs = time - lastTime;
   const dt = Math.min((time - lastTime) / 1000, 0.06) || 0.016;
   lastTime = time;
   if (document.hidden || window.stoneGambit?.manual || film.offline) return;
+  if (ready && !film.recording) scene.adaptQuality(frameMs);
   if (ready) {
     film.update(dt);
     const finished = scene.update(dt);
@@ -383,6 +388,13 @@ function loop(time) {
     if (time > nextAI) queueAI();
   }
   scene.render();
+  if (import.meta.env.DEV) {
+    const stage = $('#stage');
+    stage.dataset.frameMs = String(frameMs);
+    stage.dataset.drawCalls = String(scene.renderer.info.render.calls);
+    stage.dataset.triangles = String(scene.renderer.info.render.triangles);
+    stage.dataset.pixelRatio = String(scene.renderer.getPixelRatio());
+  }
 }
 requestAnimationFrame(loop);
 scene

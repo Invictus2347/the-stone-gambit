@@ -5,6 +5,7 @@ import { composeFilm as compose } from './film-graphics.js';
 
 export async function renderOffline(film) {
   if (film.recording) throw new Error('A film is already rendering.');
+  await film.scene.fracturesReady;
   const config = {
     codec: 'avc1.42002a',
     width: 1920,
