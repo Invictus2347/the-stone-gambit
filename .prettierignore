@@ -1,0 +1,8 @@
+node_modules/
+dist/
+output/
+package-lock.json
+public/
+docs/images/
+LICENSE
+NOTICE

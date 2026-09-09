@@ -1,0 +1,16 @@
+node_modules/
+dist/
+output/
+.vercel/
+.env
+.env.*
+*.log
+*.blend
+*.blend1
+*.stl
+*.mp4
+*.webm
+.DS_Store
+.idea/
+.vscode/
+coverage/

@@ -1,0 +1,17 @@
+The MIT license covers original application code and documentation only.
+Third-party models, fonts, dependencies, and associated marks are excluded.
+
+Models: Harry Potter Chess Set by PHusband
+https://www.thingiverse.com/thing:5886018
+Creative Commons Attribution 4.0
+https://creativecommons.org/licenses/by/4.0/
+Adapted for this game: scaling, polygon reduction, skinning, materials,
+fracture geometry, and animation integration. See docs/ASSETS.md.
+
+Fonts: Cormorant Garamond and Manrope, SIL Open Font License 1.1.
+Full notices: public/fonts/Cormorant-OFL.txt and public/fonts/Manrope-OFL.txt.
+
+Generated textures are not a representation of exclusive intellectual-property
+rights and are not relicensed here as third-party source sculptures.
+Dependencies retain their respective licenses.
+No license to Harry Potter or OpenAI brands or characters is granted.

@@ -1,0 +1,21 @@
+THE STONE GAMBIT — ASSET CREDITS
+
+Harry Potter Chess Set by PHusband
+https://www.thingiverse.com/thing:5886018
+Licensed under Creative Commons Attribution 4.0
+https://creativecommons.org/licenses/by/4.0/
+
+Modifications: scaled and centered, polygon reduction, skeletal skinning,
+procedural stone materials, capture fractures, game integration and animation.
+Original source models are available from the creator's link above.
+This repository includes only the adapted runtime GLBs; see docs/ASSETS.md.
+
+The game is an unofficial fan experiment and is not endorsed by the Harry Potter rights holders.
+The source asset license is not a grant of rights to third-party brands or characters.
+
+Dust texture: generated with built-in OpenAI imagegen.
+Sound design: original procedural Web Audio synthesis.
+Game and cinematic adaptation: Blender and Three.js, developed with Codex.
+
+Typography: Cormorant Garamond and Manrope, distributed under the SIL Open Font License 1.1.
+License notices are bundled in fonts/Cormorant-OFL.txt and fonts/Manrope-OFL.txt.
