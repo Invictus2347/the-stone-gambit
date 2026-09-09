@@ -22,7 +22,7 @@
   "dependencies": {
     "chess.js": "^1.4.0",
     "mp4-muxer": "^5.2.2",
-    "three": "^0.180.0"
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "vite": "^7.1.4",
