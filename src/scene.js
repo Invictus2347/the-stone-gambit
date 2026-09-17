@@ -11,6 +11,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { makeMaterials } from './materials.js';
+import { lightingProfile } from './lighting.js';
 import { captureSquare } from './chess-engine.js';
 import { prepareCombat, poseCombat, contactDistance } from './combat.js';
 import { FrameBudget, renderPixelRatio } from './render-budget.js';
@@ -128,6 +129,7 @@ export class ChessScene {
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.resize = () => {
+      this.applyLighting();
       const mobile = innerWidth < 650;
       this.camera.aspect = innerWidth / innerHeight;
       if (mobile !== this.mobile) {
@@ -329,8 +331,10 @@ export class ChessScene {
     }
   }
   lights() {
-    this.scene.add(new THREE.HemisphereLight('#b3d5ff', '#101827', 0.45));
+    this.hemisphere = new THREE.HemisphereLight('#b3d5ff', '#101827', 0.45);
+    this.scene.add(this.hemisphere);
     const key = new THREE.DirectionalLight('#bddeff', 2.8);
+    this.keyLight = key;
     key.position.set(-9, 22, 8);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -349,10 +353,24 @@ export class ChessScene {
     rim.position.set(7, 10, -15);
     this.scene.add(rim);
     const fill = new THREE.DirectionalLight('#e9c895', 0.75);
+    this.fillLight = fill;
     fill.position.set(15, 8, 12);
     this.scene.add(fill);
     this.flash = new THREE.PointLight('#c9e4ff', 0, 13, 2);
     this.scene.add(this.flash);
+  }
+  applyLighting() {
+    const profile = lightingProfile(
+      innerWidth,
+      innerHeight,
+      matchMedia('(pointer: coarse)').matches,
+    );
+    this.renderer.toneMappingExposure = profile.exposure;
+    this.scene.environmentIntensity = profile.environment;
+    this.scene.fog.density = profile.fog;
+    this.hemisphere.intensity = profile.hemisphere;
+    this.keyLight.intensity = profile.key;
+    this.fillLight.intensity = profile.fill;
   }
   buildAtmosphere() {
     const count = 420;
